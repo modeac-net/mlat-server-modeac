@@ -188,6 +188,8 @@ class Coordinator(object):
 
         self.sighup_handlers = []
         self.authenticator = authenticator
+        # modeac.net: area + ban list checks at connect (mlat.admission.Admission), set by main
+        self.admission = None
         self.partition = partition
         self.tag = tag
         self.tracker = tracker.Tracker(self, partition, loop)
@@ -542,11 +544,22 @@ class Coordinator(object):
     async def every_15(self):
         while True:
             sleep = asyncio.create_task(asyncio.sleep(self.main_interval))
+            # modeac.net: separate try blocks - a failing state write (full disk, permissions) used to
+            # skip clearing sync points too, which silently degrades clock sync for every receiver
             try:
                 self._write_state()
-                self.clock_tracker.clear_all_sync_points()
             except Exception:
                 glogger.exception("Failed to write state files")
+            try:
+                self.clock_tracker.clear_all_sync_points()
+            except Exception:
+                glogger.exception("Failed to clear sync points")
+            if self.admission is not None:
+                try:
+                    if self.admission.reload_banlist():
+                        self.admission.enforce(self.receivers.values())
+                except Exception:
+                    glogger.exception("Failed to apply the ban list")
 
             await sleep
 

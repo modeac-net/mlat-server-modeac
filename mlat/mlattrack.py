@@ -70,6 +70,9 @@ class MlatTracker(object):
 
         self.cohort = Cohort(time.time(), self.loop)
 
+        # modeac.net: set by main when Mode A/C handling is enabled (mlat.modeac.ModeACTracker)
+        self.modeac = None
+
         self.pseudorange_file = None
         self.pseudorange_filename = pseudorange_filename
         if self.pseudorange_filename:
@@ -100,6 +103,12 @@ class MlatTracker(object):
 
     @profile.trackcpu
     def receiver_mlat(self, receiver, timestamp, message, now):
+        # (internal callers pass decoded message objects; only raw client bytes can be A/C)
+        if isinstance(message, (bytes, bytearray)) and len(message) == 2:
+            # modeac.net: Mode A/C reply, handled by its own address-less path
+            if self.modeac is not None:
+                self.modeac.receiver_mlat(receiver, timestamp, message, now)
+            return
         self.coordinator.stats_mlat_msgs += 1
         # use message as key
         group = self.pending.get(message)

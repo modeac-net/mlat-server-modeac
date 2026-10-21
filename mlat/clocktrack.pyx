@@ -1267,8 +1267,11 @@ class _my_component(object):
 
 
 @profile.trackcpu
-def normalize2(clocktracker, timestamp_map):
+def normalize2(clocktracker, timestamp_map, int min_receivers=3):
     """
+    modeac.net: min_receivers (default 3, as upstream) is the smallest group of linked receivers
+    worth normalizing; Mode A/C passes 2 so two-site timing can be logged and checked.
+
     Given {receiver: [(timestamp, utc), ...]}
 
     return [{receiver: (variance, [(timestamp, utc), ...])}, ...]
@@ -1338,7 +1341,7 @@ def normalize2(clocktracker, timestamp_map):
             ci += 1
         ri += 1
 
-    if predictor_count < 2:
+    if predictor_count < min_receivers - 1:
         return []
 
     cm = csr_matrix((np.array(data), (np.array(row), np.array(col))), shape=(reclen, reclen))
@@ -1373,7 +1376,7 @@ def normalize2(clocktracker, timestamp_map):
     roots = [bigComp.receivers[0]] # let's just stay with a list for a moment ... doesn't hurt even if we only do one entry
     #print(bigComp.size)
 
-    if bigComp.size < 3:
+    if bigComp.size < min_receivers:
         return [] # too small, don't continue
 
     # rebuild the graph with only the spanning edges, retaining weights

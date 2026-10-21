@@ -90,6 +90,7 @@ class PackedMlatServerProtocol(asyncio.DatagramProtocol):
     TYPE_SSYNC = 4
     TYPE_REBASE = 5
     TYPE_ABS_SYNC = 6
+    TYPE_MLAT_MODEAC = 7    # modeac.net: 2-byte Mode A/C reply (hex-octal word)
 
     STRUCT_HEADER = struct.Struct(">IHQ")
     STRUCT_SYNC = struct.Struct(">ii14s14s")
@@ -97,6 +98,7 @@ class PackedMlatServerProtocol(asyncio.DatagramProtocol):
     STRUCT_MLAT_LONG = struct.Struct(">i14s")
     STRUCT_REBASE = struct.Struct(">Q")
     STRUCT_ABS_SYNC = struct.Struct(">QQ14s14s")
+    STRUCT_MLAT_MODEAC = struct.Struct(">i2s")
 
     def __init__(self):
         self.clients = {}
@@ -140,6 +142,11 @@ class PackedMlatServerProtocol(asyncio.DatagramProtocol):
                 elif typebyte == self.TYPE_MLAT_LONG:
                     t, m = self.STRUCT_MLAT_LONG.unpack_from(data, i)
                     i += self.STRUCT_MLAT_LONG.size
+                    mlat_handler(base + t, m, utc)
+
+                elif typebyte == self.TYPE_MLAT_MODEAC:
+                    t, m = self.STRUCT_MLAT_MODEAC.unpack_from(data, i)
+                    i += self.STRUCT_MLAT_MODEAC.size
                     mlat_handler(base + t, m, utc)
 
                 elif typebyte == self.TYPE_REBASE:
@@ -200,6 +207,7 @@ class JsonClient(connection.Connection):
         self._pending_traffic_update = None
 
         self._udp_key = None
+        self.modeac_forward = False     # modeac.net client forwarding Mode A/C
         self._compression_methods = (
             ('zlib2', self.handle_zlib_messages, self.write_zlib),
             ('zlib', self.handle_zlib_messages, self.write_raw),
@@ -233,6 +241,9 @@ class JsonClient(connection.Connection):
 
         if self._udp_key is not None:
             self.udp_protocol.remove_client(self._udp_key)
+
+        if self.modeac_forward and self.coordinator.mlat_tracker.modeac is not None:
+            self.coordinator.mlat_tracker.modeac.unregister_client(self)
 
         # tell the coordinator, this might cause traffic to be suppressed
         # from other receivers
@@ -389,6 +400,15 @@ class JsonClient(connection.Connection):
                 if alt < -1000 or alt > 10000:
                     raise ValueError('invalid altitude, should be -1000 .. 10000')
 
+                # modeac.net: area and ban list, checked once per connection
+                if self.coordinator.admission is not None:
+                    refused = self.coordinator.admission.check(uuid, user, self.source_ip, lat, lon)
+                    if refused is not None:
+                        reason, holdoff = refused
+                        self.logger.warning('Refused %s (%s): %s', user, self.source_ip, reason)
+                        self.write_raw(deny=[reason], reconnect_in=holdoff)
+                        return False
+
                 clock_type = str(hs.get('clock_type', 'dump1090'))
 
                 self.use_return_results = bool(hs.get('return_results', False))
@@ -404,6 +424,7 @@ class JsonClient(connection.Connection):
                     self.report_mlat_position = self.report_mlat_position_discard
 
                 self.return_stats = hs.get('return_stats', False)
+                self.modeac_forward = bool(hs.get('modeac_forward', False))
 
                 self.use_udp = (self.udp_protocol is not None and hs.get('udp_transport', 0) == 2)
 
@@ -459,6 +480,11 @@ class JsonClient(connection.Connection):
                     "return_stats": self.return_stats,
                     "rate_reports": True,
                     "motd": expanded_motd}
+
+        # modeac.net: Mode A/C pre-filter settings for the client (updated later if they change)
+        modeac = self.coordinator.mlat_tracker.modeac
+        if self.modeac_forward and modeac is not None:
+            response['modeac_filter'] = modeac.register_client(self)
 
         if self.use_udp:
             self._udp_key = self.udp_protocol.add_client(sync_handler=self.process_sync,
@@ -613,6 +639,11 @@ class JsonClient(connection.Connection):
             self.process_rate_report_message(msg['rate_report'])
         elif 'quine' in msg:
             self.process_quine_message(msg['quine'])
+        elif 'modeac_pairs' in msg:
+            # modeac.net: squawk/altitude codes this receiver linked by reply timing
+            modeac = self.coordinator.mlat_tracker.modeac
+            if modeac is not None and self.modeac_forward:
+                modeac.receiver_pairs(self.receiver, msg['modeac_pairs'], time.time())
         else:
             self.logger.warning('Received an unexpected message: %s', msg)
 

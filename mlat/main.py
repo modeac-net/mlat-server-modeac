@@ -25,13 +25,14 @@ import asyncio
 import logging
 import signal
 import argparse
+import os
 import uvloop
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 from mlat import util
 asyncio.set_event_loop(util.mainLoop)
 
-from mlat import jsonclient, output, coordinator
+from mlat import jsonclient, output, coordinator, modeac
 
 def hostport(s):
     parts = s.split(':')
@@ -136,6 +137,53 @@ class MlatServer(object):
                             type=port_or_hostport,
                             default=[])
 
+    def add_modeac_args(self, parser):
+        parser.add_argument('--modeac',
+                            help="enable Mode A/C multilateration (modeac.net)",
+                            action='store_true',
+                            default=False)
+        parser.add_argument('--modeac-fix-connect',
+                            help="connect to ac-filter at host:port and send Mode A/C fixes as JSON lines.",
+                            action='append',
+                            type=hostport,
+                            default=[])
+        parser.add_argument('--modeac-exclude',
+                            help="comma-separated squawks dropped on arrival (default: 1200)",
+                            default='1200')
+        parser.add_argument('--modeac-min-receivers',
+                            help="distinct receivers needed for a Mode A/C fix (default and minimum: 4)",
+                            type=int,
+                            default=4)
+        parser.add_argument('--modeac-max-error',
+                            help="discard Mode A/C fixes with a larger 1-sigma horizontal error, metres (default 5000)",
+                            type=float,
+                            default=5000.0)
+        parser.add_argument('--modeac-max-group',
+                            help="max copies of one code collected per resolve window (default 200)",
+                            type=int,
+                            default=200)
+        parser.add_argument('--modeac-stats-interval',
+                            help="seconds between Mode A/C statistics log lines (default 300)",
+                            type=float,
+                            default=300.0)
+        parser.add_argument('--modeac-client-filter',
+                            help="JSON file with the Mode A/C pre-filter settings sent to clients "
+                                 "(re-read when it changes; missing = built-in defaults)")
+        parser.add_argument('--modeac-pairs-log',
+                            help="append every Mode A/C reply heard by 2+ receivers (clock-corrected) "
+                                 "to this file, for timing checks with tools/ac_timing.py")
+
+    def add_admission_args(self, parser):
+        parser.add_argument('--receiver-area',
+                            default=os.environ.get('MODEAC_RECEIVER_AREA') or None,
+                            help="only accept receivers whose stated location is inside this area: "
+                                 "'us' (50 states, the default in the modeac.net image), 'ohio', or the "
+                                 "path of an outline JSON made by tools/build_us_outline.py; 'off' for anywhere. "
+                                 "Default: $MODEAC_RECEIVER_AREA. Checked once per connection.")
+        parser.add_argument('--banlist',
+                            help="text file of banned UUIDs, IP addresses/networks and user names, one per "
+                                 "line; re-read within 15 s of a change, matching receivers are disconnected")
+
     def add_util_args(self, parser):
         parser.add_argument('--work-dir',
                             help="directory for debug/stats output and blacklist",
@@ -167,6 +215,8 @@ class MlatServer(object):
 
         self.add_client_args(parser.add_argument_group('Client connections'))
         self.add_output_args(parser.add_argument_group('Output methods'))
+        self.add_modeac_args(parser.add_argument_group('Mode A/C (modeac.net)'))
+        self.add_admission_args(parser.add_argument_group('Who may connect (modeac.net)'))
         self.add_util_args(parser.add_argument_group('Utility options'))
 
         return parser
@@ -216,6 +266,32 @@ class MlatServer(object):
 
         return subtasks
 
+    def make_modeac_subtasks(self, args):
+        if not args.modeac:
+            return []
+        exclude = set()
+        for c in args.modeac_exclude.split(','):
+            c = c.strip()
+            if not c:
+                continue
+            if len(c) != 4 or any(ch not in '01234567' for ch in c):
+                raise ValueError('--modeac-exclude: {0!r} is not a 4-digit octal squawk'.format(c))
+            exclude.add(int(c, 16))
+        tracker = modeac.ModeACTracker(self.coordinator,
+                                       exclude=exclude,
+                                       min_receivers=args.modeac_min_receivers,
+                                       max_group=args.modeac_max_group,
+                                       max_error=args.modeac_max_error,
+                                       pairs_filename=args.modeac_pairs_log,
+                                       stats_interval=args.modeac_stats_interval,
+                                       client_filter_path=args.modeac_client_filter)
+        self.coordinator.mlat_tracker.modeac = tracker
+        logging.warning("Mode A/C enabled: excluding %s, min %d receivers, %d fix output(s)%s",
+                        ','.join('%04x' % c for c in sorted(exclude)) or 'nothing',
+                        tracker.min_receivers, len(args.modeac_fix_connect),
+                        ', pairs log ' + args.modeac_pairs_log if args.modeac_pairs_log else '')
+        return [modeac.make_fix_connector(host, port, tracker) for host, port in args.modeac_fix_connect]
+
     def make_util_subtasks(self, args):
         subtasks = []
 
@@ -242,9 +318,21 @@ class MlatServer(object):
                                                    tag=args.tag,
                                                    status_interval=args.status_interval)
 
+        if args.receiver_area and args.receiver_area.lower() == 'off':
+            args.receiver_area = None
+        if args.receiver_area or args.banlist:
+            from mlat import admission, geofence
+            area = args.receiver_area
+            if area and area.lower() in ('us', 'ohio'):
+                area = os.path.join(os.path.dirname(geofence.__file__), 'data', area.lower() + '_outline.json')
+            self.coordinator.admission = admission.Admission(area_path=area, banlist_path=args.banlist)
+            logging.warning("Receivers accepted from: %s%s", area or 'anywhere',
+                            ', ban list ' + args.banlist if args.banlist else '')
+
         subtasks = ([self.coordinator] +
                 self.make_util_subtasks(args) +
                 self.make_output_subtasks(args) +
+                self.make_modeac_subtasks(args) +
                 self.make_client_subtasks(args))
 
 
