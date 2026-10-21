@@ -1,0 +1,7 @@
+# modeac.net ban list: one entry per line, '#' starts a comment.
+# Accepted: a receiver UUID, an IP address, an IP network (1.2.3.0/24), or an mlat user name.
+# Saved changes apply within 15 s: matching receivers are disconnected and told to stay away for a day.
+#
+# Examples:
+# 0b7a3c52-1d2e-4f60-9a8b-123456789abc   # sent fake positions, 2026-11-02
+# 203.0.113.7

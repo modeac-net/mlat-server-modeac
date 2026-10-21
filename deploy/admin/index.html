@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>modeac.net admin</title>
+<link rel="stylesheet" href="leaflet/leaflet.css">
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #5e6778; --line: #dfe3ea;
+    --good: #1f9d55; --wait: #d69e2e; --bad: #d64545; --info: #6b7280;
+    --good-bg: #e6f6ec; --wait-bg: #fdf3dc; --bad-bg: #fbe7e7; --info-bg: #eef0f3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1b2029; --text: #e6e9ef; --muted: #9aa3b2; --line: #2c3340;
+      --good-bg: #173426; --wait-bg: #3a2f14; --bad-bg: #3d1d1d; --info-bg: #262c36;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 14px 18px 6px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: baseline; }
+  h1 { font-size: 18px; margin: 0; }
+  .updated { color: var(--muted); }
+  .updated.stale { color: var(--bad); font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 18px 10px; }
+  .chip { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+  .chip b { font-size: 16px; margin-right: 4px; }
+  .notes { padding: 0 18px; }
+  .note { border-radius: 8px; padding: 8px 12px; margin: 6px 0; background: var(--wait-bg); }
+  .note.bad { background: var(--bad-bg); }
+  main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 8px 18px 24px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .panel h2 { font-size: 15px; margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--line);
+              display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
+  .panel h2 label { font-weight: normal; font-size: 13px; color: var(--muted); cursor: pointer; }
+  #map { height: 62vh; min-height: 360px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 8px 14px; color: var(--muted); font-size: 13px; }
+  .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; vertical-align: -1px; margin-right: 5px; }
+  .sq { display: inline-block; width: 13px; height: 11px; vertical-align: -1px; margin-right: 5px; border-radius: 2px; }
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--panel); }
+  td.wrap { white-space: normal; min-width: 240px; }
+  tr.good td:first-child { box-shadow: inset 4px 0 var(--good); }
+  tr.wait td:first-child { box-shadow: inset 4px 0 var(--wait); }
+  tr.bad  td:first-child { box-shadow: inset 4px 0 var(--bad); }
+  tr.info td:first-child { box-shadow: inset 4px 0 var(--info); }
+  .status { font-weight: 600; }
+  .good .status { color: var(--good); } .wait .status { color: var(--wait); }
+  .bad .status { color: var(--bad); }   .info .status { color: var(--info); }
+  .muted { color: var(--muted); }
+  details { padding: 4px 14px 12px; }
+  details summary { cursor: pointer; padding: 6px 0; font-weight: 600; }
+  details li { margin: 4px 0; }
+  .leaflet-popup-content { font-size: 13px; line-height: 1.4; }
+</style>
+</head>
+<body>
+<header>
+  <h1>modeac.net admin</h1>
+  <span class="updated" id="updated">loading…</span>
+</header>
+<div class="chips" id="chips"></div>
+<div class="notes" id="notes"></div>
+
+<main>
+  <section class="panel">
+    <h2>Feeder map
+      <label><input type="checkbox" id="optSync" checked> sync lines</label>
+      <label><input type="checkbox" id="optCover" checked> coverage</label>
+      <label><input type="checkbox" id="optHide"> hide exact locations (for screenshots)</label>
+    </h2>
+    <div id="map"></div>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--good)"></span>in sync, working</span>
+      <span><span class="dot" style="background:var(--wait)"></span>connected, not in sync yet</span>
+      <span><span class="dot" style="background:var(--bad)"></span>problem, see table</span>
+      <span><span class="dot" style="background:var(--info)"></span>map feed only</span>
+      <span><span class="sq" style="background:#3b82f6;opacity:.35"></span>heard by 1–3 feeders</span>
+      <span><span class="sq" style="background:#16a34a;opacity:.5"></span>heard by 4+ feeders: Mode A/C positions possible</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Feeders <span class="muted" style="font-weight:normal;font-size:13px">problems first · click a heading to sort · click a row to find it on the map</span></h2>
+    <div class="tablewrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+    <details>
+      <summary>What does it all mean?</summary>
+      <ul>
+        <li><b>In sync</b>: the feeder's clock is lined up with other feeders, so its timing can be used for positions. This is the normal state.</li>
+        <li><b>Waiting for sync</b>: connected, but no other feeder has heard the same ADS-B aircraft as it yet. Normal for a minute or two after joining, and for a feeder far from all others. Nothing to do.</li>
+        <li><b>Clock problem</b>: its timing keeps disagreeing with its neighbours. Usually a wrong location or antenna height in its settings, or an overloaded/unsteady computer. Ask the volunteer to check their latitude, longitude and altitude.</li>
+        <li><b>Location doesn't match</b>: the aircraft it hears are far from where it says it is. Almost always a typo in its settings (e.g. a missing minus sign on longitude). Ask them to check.</li>
+        <li><b>Outside the area</b>: it hears no aircraft inside the allowed area; the feeder check bans it automatically (and lifts that a week after it stops).</li>
+        <li><b>Map feed only</b>: sends ADS-B for the map, but no MLAT client is connected. Fine, but it doesn't help with Mode A/C positions.</li>
+        <li><b>Coverage</b> is rough: each working feeder covers a circle as far out as it has heard aircraft (feeders with problems don't count). Mode A/C positions need 4 feeders hearing the same aircraft, so the green area is where unknowns can be located. Low-flying aircraft are heard less far, so expect less at low altitude.</li>
+        <li>Mode S msg/s is what the feeder's MLAT client sends; ADS-B msg/s and positions/s are its map feed. A feeder near busy airspace with a good antenna shows more.</li>
+      </ul>
+    </details>
+  </section>
+</main>
+
+<script src="leaflet/leaflet.js"></script>
+<script>
+"use strict";
+const REFRESH_S = 10;
+const SOURCES = {
+  mlat: "data/mlat/clients.json",          // mlat-server: connected MLAT clients
+  sync: "data/mlat/sync.json",             // mlat-server: clock sync between feeders
+  check: "data/feedercheck/status.json",   // feeder check: what each feeder actually hears
+  hub: "data/hub/clients.json",            // readsb: ADS-B feed connections
+  acf: "data/acfilter/status.json",        // ac-filter: Mode A/C targets
+};
+
+// ---------------------------------------------------------------- helpers
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtDur = (s) => {
+  if (s == null || !isFinite(s)) return "";
+  s = Math.max(0, Math.round(s));
+  if (s < 90) return s + " s";
+  if (s < 5400) return Math.round(s / 60) + " min";
+  if (s < 172800) return (s / 3600).toFixed(1) + " h";
+  return (s / 86400).toFixed(1) + " days";
+};
+const num = (v, d = 0) => (v == null || !isFinite(v)) ? "" : Number(v).toFixed(d);
+const plainIp = (ip) => (ip || "").replace(/^::ffff:/, "");
+const ipFromConn = (s) => {           // readsb: "1.2.3.4 port 5678" or "TCP4 <client> <proxy> ..."
+  const p = String(s || "").trim().split(/\s+/);
+  if (p[0] === "TCP4" || p[0] === "TCP6") return plainIp(p[1]);
+  return plainIp(p[0]);
+};
+async function getJson(url) {
+  try {
+    const r = await fetch(url + "?t=" + Date.now(), {cache: "no-store"});
+    if (!r.ok) return {error: "HTTP " + r.status};
+    return {data: await r.json()};
+  } catch (e) { return {error: String(e)}; }
+}
+function haversineKm(a, b, c, d) {
+  const R = 6371, r = Math.PI / 180;
+  const x = Math.sin((c - a) * r / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin((d - b) * r / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
+// ---------------------------------------------------------------- map
+const map = L.map("map", {preferCanvas: true, worldCopyJump: true}).setView([40.0, -83.0], 7);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 13, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+}).addTo(map);
+const coverLayer = L.layerGroup().addTo(map);
+const syncLayer = L.layerGroup().addTo(map);
+const markerLayer = L.layerGroup().addTo(map);
+let fitted = false;
+const markersByKey = {};
+const COLORS = {good: "#1f9d55", wait: "#d69e2e", bad: "#d64545", info: "#6b7280"};
+
+// rough location for screenshots: snap to a ~20 km grid
+const blur = (lat, lon) => [Math.round(lat * 5) / 5, Math.round(lon * 4) / 4];
+
+// ---------------------------------------------------------------- join the sources into one row per feeder
+function buildRows(src) {
+  const now = Date.now() / 1000;
+  const mlat = src.mlat.data || {};
+  const sync = src.sync.data || {};
+  const check = (src.check.data && src.check.data.feeders) || [];
+  const hubRows = (src.hub.data && src.hub.data.clients) || [];
+
+  // ADS-B feed connections from readsb
+  const feeds = hubRows.map((r) => ({
+    uuid: String(r[0] || "").trim().toLowerCase(), ip: ipFromConn(r[1]), kbit: r[2],
+    connected_s: r[3], mps: r[4], pps: r[5], positions: r[8], used: false,
+  }));
+  const checkByUuid = {};
+  for (const f of check) checkByUuid[f.uuid] = f;
+
+  const rows = [];
+  for (const [name, c] of Object.entries(mlat)) {
+    const ip = plainIp(c.source_ip);
+    const uuid = String(c.uuid || "").toLowerCase();
+    // match its map feed: same UUID, else the only feed from the same IP address
+    let feed = uuid ? feeds.find((f) => !f.used && f.uuid && f.uuid === uuid) : null;
+    if (!feed) {
+      const same = feeds.filter((f) => !f.used && f.ip && f.ip === ip);
+      const mlatSameIp = Object.values(mlat).filter((o) => plainIp(o.source_ip) === ip).length;
+      if (same.length === 1 && mlatSameIp === 1) feed = same[0];
+    }
+    if (feed) feed.used = true;
+    const chk = feed ? checkByUuid[feed.uuid] : null;
+    const peers = sync[name] && sync[name].peers ? sync[name].peers : {};
+    const peerNames = Object.keys(peers).filter((p) => (peers[p][0] || 0) > 0);
+    rows.push({
+      key: "m:" + name, kind: "mlat", name, user: c.user, uuid: uuid || (feed && feed.uuid) || "",
+      lat: c.lat, lon: c.lon, alt: c.alt, ip, version: c.connection || "",
+      mode_s_rate: c.message_rate, peer_count: c.peer_count ?? peerNames.length, peerNames,
+      bad_sync: (c.bad_sync_timeout || 0) > 0, outlier: c.outlier_percent,
+      feed, chk, box: chk && chk.box, connected_s: feed ? feed.connected_s : null,
+    });
+  }
+  for (const f of feeds) {
+    if (f.used) continue;
+    const chk = checkByUuid[f.uuid];
+    rows.push({key: "f:" + (f.uuid || f.ip), kind: "feed", name: "(map feed " + (f.uuid ? f.uuid.slice(0, 8) : f.ip) + ")",
+               uuid: f.uuid, ip: f.ip, feed: f, chk, box: chk && chk.box, connected_s: f.connected_s,
+               lat: null, lon: null, peerNames: [], peer_count: 0});
+  }
+  for (const r of rows) classify(r);
+  const order = {bad: 0, wait: 1, info: 2, good: 3};
+  rows.sort((a, b) => order[a.cls] - order[b.cls] || a.name.localeCompare(b.name));
+  return rows;
+}
+
+function classify(r) {
+  const v = r.chk && r.chk.verdict;
+  if (v === "outside") { r.cls = "bad"; r.status = "Outside the area"; r.why = "Hears no aircraft inside the allowed area. Auto-banned by the feeder check."; return; }
+  if (v === "mismatch") { r.cls = "bad"; r.status = "Location doesn't match"; r.why = "Says it is at its stated location, but the aircraft it hears are " + r.chk.stated_km_from_box + " km away from there. Ask the volunteer to check latitude/longitude."; return; }
+  if (r.bad_sync) { r.cls = "bad"; r.status = "Clock problem"; r.why = "Its timing keeps disagreeing with neighbouring feeders, so it's left out for now. Ask the volunteer to check location and antenna height."; return; }
+  if (v === "unclear") { r.cls = "wait"; r.status = "Feed looks odd"; r.why = "The map hub saw positions from it that are too far apart for one antenna (bad data or a shared connection). Keep an eye on it."; return; }
+  if (r.kind === "feed") { r.cls = "info"; r.status = "Map feed only"; r.why = "Sends ADS-B for the map; no MLAT client connected with it."; return; }
+  if ((r.peer_count || 0) === 0) { r.cls = "wait"; r.status = "Waiting for sync"; r.why = "Connected. Needs another feeder hearing the same ADS-B aircraft (normal for the first minutes, or when far from everyone else)."; return; }
+  r.cls = "good"; r.status = "In sync"; r.why = "In clock sync with " + r.peer_count + " feeder" + (r.peer_count === 1 ? "" : "s") + ".";
+  if (!r.feed) r.why += " (No map feed matched: fine, but its location can't be checked against what it hears.)";
+}
+
+// ---------------------------------------------------------------- coverage
+// Each working MLAT feeder gets a circle: its radius is how far out it hears aircraft, from the
+// reception box the map hub keeps for it (average distance to the box's edges). Feeders with
+// problems don't count. Cells covered by 4+ circles are where Mode A/C positions are possible.
+function rangeKm(r) {
+  const [a0, a1, o0, o1] = r.box, k = Math.cos(r.lat * Math.PI / 180) * 111.2;
+  const d = [(a1 - r.lat) * 111.2, (r.lat - a0) * 111.2, (o1 - r.lon) * k, (r.lon - o0) * k].filter((x) => x > 0);
+  if (d.length < 4) return null;                  // it isn't inside its own box: location is off
+  return Math.min(450, Math.max(40, d.reduce((x, y) => x + y, 0) / d.length));
+}
+function drawCoverage(rows) {
+  coverLayer.clearLayers();
+  if (!$("optCover").checked) return;
+  const circles = [];
+  for (const r of rows) {
+    if (r.kind !== "mlat" || r.cls === "bad" || r.lat == null || !r.box || r.box.length !== 4) continue;
+    const km = rangeKm(r);
+    if (km) circles.push([r.lat, r.lon, km]);
+  }
+  if (!circles.length) return;
+  let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180;
+  for (const [la, lo, km] of circles) {
+    const dla = km / 111.2, dlo = km / (111.2 * Math.cos(la * Math.PI / 180));
+    la0 = Math.min(la0, la - dla); la1 = Math.max(la1, la + dla); lo0 = Math.min(lo0, lo - dlo); lo1 = Math.max(lo1, lo + dlo);
+  }
+  const span = Math.max(la1 - la0, lo1 - lo0);
+  const step = span > 30 ? 0.5 : span > 12 ? 0.25 : 0.125;
+  for (let la = Math.floor(la0 / step) * step; la < la1; la += step) {
+    for (let lo = Math.floor(lo0 / step) * step; lo < lo1; lo += step) {
+      const cla = la + step / 2, clo = lo + step / 2;
+      let n = 0;
+      for (const [fla, flo, km] of circles) if (haversineKm(cla, clo, fla, flo) <= km) n++;
+      if (!n) continue;
+      const four = n >= 4;
+      L.rectangle([[la, lo], [la + step, lo + step]], {
+        stroke: false, interactive: false, fillColor: four ? "#16a34a" : "#3b82f6",
+        fillOpacity: four ? 0.22 : 0.05 + 0.03 * n,
+      }).addTo(coverLayer);
+    }
+  }
+}
+
+function drawMap(rows, sync) {
+  markerLayer.clearLayers(); syncLayer.clearLayers();
+  for (const k of Object.keys(markersByKey)) delete markersByKey[k];
+  const hide = $("optHide").checked;
+  const pos = {};
+  for (const r of rows) {
+    if (r.lat == null || r.lon == null) continue;
+    const p = hide ? blur(r.lat, r.lon) : [r.lat, r.lon];
+    pos[r.name] = p;
+    const m = L.circleMarker(p, {radius: 8, weight: 2, color: "#fff", fillColor: COLORS[r.cls], fillOpacity: 0.95});
+    const where = hide ? "(location hidden)" : num(r.lat, 4) + ", " + num(r.lon, 4) + (r.alt != null ? " · " + num(r.alt) + " m" : "");
+    m.bindTooltip(esc(r.name) + ": " + esc(r.status));
+    m.bindPopup("<b>" + esc(r.name) + "</b><br>" + esc(r.status) + "<br><span class='muted'>" + esc(r.why) + "</span><br>" +
+                where + (r.peerNames.length ? "<br>In sync with: " + esc(r.peerNames.join(", ")) : ""));
+    m.addTo(markerLayer);
+    markersByKey[r.key] = m;
+  }
+  if ($("optSync").checked && sync) {
+    const done = new Set();
+    for (const [a, s] of Object.entries(sync)) {
+      for (const [b, v] of Object.entries(s.peers || {})) {
+        const k = [a, b].sort().join("|");
+        if (done.has(k) || !pos[a] || !pos[b] || !(v[0] > 0)) continue;
+        done.add(k);
+        const strong = v[0] >= 10;
+        L.polyline([pos[a], pos[b]], {color: strong ? "#1f9d55" : "#d69e2e", weight: strong ? 2.5 : 1.5,
+                                      opacity: 0.8, dashArray: strong ? null : "5 6"})
+          .bindTooltip(esc(a) + " ↔ " + esc(b) + ": " + v[0] + " sync messages, error " + v[1] + " µs" +
+                       " (" + Math.round(haversineKm(pos[a][0], pos[a][1], pos[b][0], pos[b][1])) + " km apart)")
+          .addTo(syncLayer);
+      }
+    }
+  }
+  const pts = Object.values(pos);
+  if (!fitted && pts.length) {
+    map.fitBounds(L.latLngBounds(pts).pad(0.3), {maxZoom: 9});
+    fitted = true;
+  }
+}
+
+// ---------------------------------------------------------------- table
+const COLS = [
+  {t: "Status", v: (r) => r.status, h: (r) => "<span class='status'>" + esc(r.status) + "</span>"},
+  {t: "Feeder", v: (r) => r.name, h: (r) => esc(r.name)},
+  {t: "What it means", v: (r) => r.why, h: (r) => esc(r.why), cls: "wrap"},
+  {t: "Connected", v: (r) => r.connected_s ?? -1, h: (r) => fmtDur(r.connected_s)},
+  {t: "Mode S msg/s", v: (r) => r.mode_s_rate ?? -1, h: (r) => num(r.mode_s_rate)},
+  {t: "ADS-B msg/s", v: (r) => r.feed ? r.feed.mps : -1, h: (r) => r.feed ? num(r.feed.mps) : "<span class='muted'>none</span>"},
+  {t: "Positions/s", v: (r) => r.feed ? r.feed.pps : -1, h: (r) => r.feed ? num(r.feed.pps, 1) : ""},
+  {t: "Sync peers", v: (r) => r.peer_count ?? 0, h: (r) => r.kind === "feed" ? "" : (r.peer_count ?? 0) + (r.peerNames.length ? " <span class='muted'>(" + esc(r.peerNames.join(", ")) + ")</span>" : "")},
+  {t: "Feeder check", v: (r) => (r.chk && r.chk.verdict) || "", h: (r) => esc((r.chk && r.chk.verdict) || "not yet")},
+  {t: "Location", v: (r) => r.lat ?? 999, h: (r) => r.lat == null ? "" : ($("optHide").checked ? "<span class='muted'>hidden</span>" : num(r.lat, 4) + ", " + num(r.lon, 4) + " · " + num(r.alt) + " m")},
+  {t: "IP address", v: (r) => r.ip, h: (r) => $("optHide").checked ? "<span class='muted'>hidden</span>" : esc(r.ip)},
+  {t: "UUID", v: (r) => r.uuid, h: (r) => r.uuid ? "<span class='muted'>" + esc(r.uuid.slice(0, 8)) + "…</span>" : ""},
+  {t: "Software", v: (r) => r.version, h: (r) => "<span class='muted'>" + esc(r.version) + "</span>"},
+];
+let sortCol = -1, sortDir = 1, lastRows = [], lastSync = null;
+
+function drawTable(rows) {
+  const thead = $("tbl").tHead, tbody = $("tbl").tBodies[0];
+  thead.innerHTML = "<tr>" + COLS.map((c, i) => "<th data-i='" + i + "'>" + c.t + (i === sortCol ? (sortDir > 0 ? " ▲" : " ▼") : "") + "</th>").join("") + "</tr>";
+  let rs = rows.slice();
+  if (sortCol >= 0) {
+    const f = COLS[sortCol].v;
+    rs.sort((a, b) => { const x = f(a), y = f(b); return (x > y ? 1 : x < y ? -1 : 0) * sortDir; });
+  }
+  tbody.innerHTML = rs.length ? rs.map((r) => "<tr class='" + r.cls + "' data-key='" + esc(r.key) + "'>" +
+    COLS.map((c) => "<td" + (c.cls ? " class='" + c.cls + "'" : "") + ">" + c.h(r) + "</td>").join("") + "</tr>").join("")
+    : "<tr><td colspan='" + COLS.length + "' class='muted'>No feeders connected.</td></tr>";
+}
+$("tbl").addEventListener("click", (e) => {
+  const th = e.target.closest("th");
+  if (th) { const i = +th.dataset.i; sortDir = (i === sortCol) ? -sortDir : 1; sortCol = i; drawTable(lastRows); return; }
+  const tr = e.target.closest("tr[data-key]");
+  const m = tr && markersByKey[tr.dataset.key];
+  if (m) { map.setView(m.getLatLng(), Math.max(map.getZoom(), 9)); m.openPopup(); window.scrollTo({top: 0, behavior: "smooth"}); }
+});
+
+// ---------------------------------------------------------------- summary + problems with the data itself
+function drawSummary(rows, src) {
+  const mlatN = rows.filter((r) => r.kind === "mlat").length;
+  const feedN = rows.filter((r) => r.feed).length;
+  const good = rows.filter((r) => r.cls === "good").length;
+  const bad = rows.filter((r) => r.cls === "bad").length;
+  const acf = src.acf.data;
+  const targets = acf && acf.aircraft ? acf.aircraft.filter((a) => a.lat != null && (Date.now() / 1000 - a.t) < 60).length : null;
+  const chips = [
+    [mlatN, "MLAT feeders"], [feedN, "map feeds"], [good, "in sync"], [bad, "with problems"],
+  ];
+  if (targets != null) chips.push([targets, "Mode A/C targets now"]);
+  $("chips").innerHTML = chips.map(([n, t]) => "<span class='chip'><b>" + n + "</b>" + t + "</span>").join("");
+
+  const notes = [];
+  if (src.mlat.error) notes.push(["bad", "Can't read mlat-server's feeder list (" + src.mlat.error + "). Is mlat-server running? Try: docker compose ps"]);
+  if (src.hub.error) notes.push(["bad", "Can't read the map hub's feed list (" + src.hub.error + "). Is the hub running?"]);
+  if (src.check.error) notes.push(["", "No feeder check results yet. It runs every few minutes after start; if this stays, check: docker compose logs feedercheck"]);
+  if (src.sync.error) notes.push(["", "No sync data yet (mlat-server writes it every few seconds once feeders connect)."]);
+  if (src.check.data && src.check.data.now && Date.now() / 1000 - src.check.data.now > 1800)
+    notes.push(["", "Feeder check results are " + fmtDur(Date.now() / 1000 - src.check.data.now) + " old. Check: docker compose logs feedercheck"]);
+  if (mlatN === 1 && good === 0) notes.push(["", "Only one MLAT feeder: sync needs at least two feeders hearing the same aircraft."]);
+  $("notes").innerHTML = notes.map(([c, t]) => "<div class='note " + c + "'>" + esc(t) + "</div>").join("");
+}
+
+// ---------------------------------------------------------------- main loop
+let lastOk = 0;
+async function refresh() {
+  const keys = Object.keys(SOURCES);
+  const res = await Promise.all(keys.map((k) => getJson(SOURCES[k])));
+  const src = {};
+  keys.forEach((k, i) => (src[k] = res[i]));
+  const rows = buildRows(src);
+  lastRows = rows; lastSync = src.sync.data;
+  drawSummary(rows, src);
+  drawCoverage(rows);
+  drawMap(rows, lastSync);
+  drawTable(rows);
+  if (!src.mlat.error || !src.hub.error) lastOk = Date.now();
+}
+function tick() {
+  const age = (Date.now() - lastOk) / 1000;
+  const el = $("updated");
+  el.textContent = lastOk ? "updated " + fmtDur(age) + " ago · refreshes every " + REFRESH_S + " s" : "waiting for data…";
+  el.classList.toggle("stale", lastOk && age > 60);
+}
+for (const id of ["optSync", "optCover", "optHide"]) $(id).addEventListener("change", () => {
+  drawCoverage(lastRows); drawMap(lastRows, lastSync); drawTable(lastRows);
+});
+refresh(); setInterval(refresh, REFRESH_S * 1000); setInterval(tick, 1000);
+</script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+{
+  "_comment": "Mode A/C pre-filter applied by every volunteer's client before sending. Edit and save: mlat-server re-reads this within 15 s and pushes it to all connected clients. A file with a mistake is ignored (the current settings stay) and the reason is in: docker compose logs mlat-server",
+
+  "exclude": {
+    "_comment": "Codes always dropped.",
+    "enabled": true,
+    "codes": ["1200"]
+  },
+
+  "mode_a_match": {
+    "_comment": "Drop a code that is the squawk of a Mode S / ADS-B aircraft the receiver heard in the last window_s seconds. Codes in never_drop are always sent: several aircraft can share them.",
+    "enabled": true,
+    "window_s": 60,
+    "never_drop": ["0000", "1200", "1255", "1277", "4000", "7000", "7400", "7500", "7600", "7700", "7777"]
+  },
+
+  "mode_c_match": {
+    "_comment": "Drop a code that is the Mode C altitude (+/- tolerance_ft) of a Mode S / ADS-B aircraft the receiver heard in the last window_s seconds. Off: airliners fill most flight levels, so this would also drop unknown aircraft's altitude replies.",
+    "enabled": false,
+    "window_s": 30,
+    "tolerance_ft": 100
+  },
+
+  "reply_pairing": {
+    "_comment": "Link a squawk and an altitude code of the same aircraft at each receiver, two ways: sandwich = squawk, altitude, squawk at the radar's exact interrogation spacing and the same signal level (fast); correlation = the two codes heard in the same beam dwells at the same mean signal level, dwell after dwell (slower; also works on radars with staggered timing; OFF because on real traffic it linked airliners at different flight levels: 41 right / 108 wrong, against sandwich 23 / 0). Links obey real-aircraft rules: two squawks never link, and a discrete squawk keeps only its strongest altitude. drop_paired: drop an altitude reply whose every partner is a dropped code (known Mode S traffic, 1200 VFR) - an unknown on 4000 keeps its altitude. send_hints: tell ac-filter about unknowns' squawk/altitude links so it pairs them at once. The rest is tuning: try values with tools/ac_capture.py on a recording first.",
+    "enabled": true,
+    "drop_paired": false,
+    "send_hints": true,
+    "hint_interval_s": 5,
+    "sandwich": true,
+    "min_hits": 3,
+    "window_s": 30,
+    "min_gap_us": 1500,
+    "max_gap_us": 6000,
+    "spacing_tol_us": 5,
+    "signal_tol_db": 3,
+    "stagger_test": false,
+    "correlation": false,
+    "burst_gap_ms": 25,
+    "burst_signal_tol_db": 2,
+    "min_bursts": 4,
+    "min_ratio": 0.4,
+    "corr_window_s": 120,
+    "min_replies_per_burst": 2
+  }
+}

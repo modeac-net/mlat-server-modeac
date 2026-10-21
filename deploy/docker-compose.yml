@@ -1,0 +1,181 @@
+# modeac.net server stack: one docker-compose for the whole back end.
+#
+#   receivers --(Beast, ADS-B)------------------------> hub          (readsb + tar1090 map)
+#   receivers --(mlat-client-modeac)--> mlat-server --(Mode A/C fixes)--> acfilter --(SBS MLAT)--> hub
+#                                                        acfilter <--(aircraft.json: known traffic)-- hub
+#   feedercheck <--(what each feeder hears)-- hub;  feedercheck --(autoban.txt)--> mlat-server
+#   public visitors --> Cloudflare --> cloudflared --> web (hides feeder details) --> hub
+#
+# Start:   docker compose up -d          (from this folder, after copying .env.example to .env)
+# Map:     http://localhost:8080
+# Admin:   http://localhost:8090   (feeder map + diagnostics; private)
+# Logs:    docker compose logs -f mlat-server acfilter
+# Update:  docker compose pull && docker compose up -d
+#
+# The service names (hub, mlat-server, acfilter) are wired into the images' defaults; keep them.
+
+services:
+
+  # --- the map: readsb (network-only, no SDR) + tar1090 ---------------------------------------
+  hub:
+    image: ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder
+    container_name: hub
+    restart: unless-stopped
+    ports:
+      - "8080:80"            # map for you; the public reaches it only via the Cloudflare tunnel (web)
+      - "30004:30004"        # Beast input from receivers (ADS-B picture for the map + filter)
+    environment:
+      - TZ=${TZ:-America/New_York}
+      # no READSB_DEVICE_TYPE: network-only, no SDR
+      - READSB_NET_BEAST_INPUT_PORT=30004
+      - READSB_NET_SBS_INPUT_PORT=32006   # MLAT input on 32007: Mode A/C targets (acfilter) and Mode S MLAT (mlat-server)
+      - TAR1090_PAGETITLE=modeac.net
+      - TAR1090_DEFAULTCENTERLAT=39.96
+      - TAR1090_DEFAULTCENTERLON=-82.99
+      - TAR1090_DEFAULTZOOMLVL=8
+      # Feeder tracking (as the big aggregators run it): readsb keeps each feeder's reception box,
+      # times out feeders that send bad positions (their messages are dropped while timed out).
+      # receivers.json + clients.json feed the feedercheck service; the public site never serves them.
+      - READSB_EXTRA_ARGS=--net-receiver-id --write-receiver-id-json --devel=enableClientsJson --devel=readProxy
+      # Less disk wear on a 24/7 hub (first local test: ~4.5 GB/day written): no receiver graphs (the hub
+      # has no radio), and readsb's saved state only on shutdown instead of continuously.
+      - GRAPHS1090_DISABLE=true
+      - READSB_WRITE_STATE_ONLY_ON_EXIT=true
+    tmpfs:
+      - /run:exec,size=256M
+      - /tmp:size=128M
+      - /var/log:size=32M
+
+  # --- multilateration ---------------------------------------------------------------------------
+  mlat-server:
+    image: ghcr.io/modeac-net/mlat-server-modeac
+    container_name: mlat-server
+    restart: unless-stopped
+    ports:
+      - "31090:31090/tcp"    # mlat-client connections
+      - "31091:31091/udp"    # mlat-client UDP data
+    volumes:
+      - ./data/mlat:/run/mlat          # pairs.jsonl (timing log for tools/ac_timing.py), sync state
+      - ./config:/etc/modeac:ro        # client-filter.json (Mode A/C pre-filter), banlist.txt; both live reload
+      - ./data/feedercheck:/run/feedercheck:ro   # autoban.txt from the feeder check, also live reload
+    environment:
+      - MODEAC_RECEIVER_AREA=${RECEIVER_AREA:-us}   # where receivers may be: us | ohio | off
+    # The image's default command already enables Mode A/C, sends Mode A/C fixes to acfilter:39100 and
+    # sends ordinary Mode S MLAT results (tankers and other Mode S-only aircraft) to the hub's MLAT input.
+    # Uncomment to change settings (this replaces the whole default command):
+    # command: >
+    #   --client-listen 31090:31091 --work-dir /run/mlat
+    #   --modeac --modeac-fix-connect acfilter:39100
+    #   --modeac-pairs-log /run/mlat/pairs.jsonl
+    #   --modeac-client-filter /etc/modeac/client-filter.json
+    #   --modeac-exclude 1200 --modeac-min-receivers 4 --modeac-max-error 5000
+    #   --banlist /etc/modeac/banlist.txt,/run/feedercheck/autoban.txt
+    #   --filtered-basestation-connect hub:32007
+
+  # --- tracking, squawk/altitude pairing, hiding known traffic ------------------------------------
+  acfilter:
+    image: ghcr.io/modeac-net/modeac-filter
+    container_name: acfilter
+    restart: unless-stopped
+    depends_on:
+      - hub
+    volumes:
+      - ./data/acfilter:/run/acfilter  # status.json: current tracks and why each is shown/hidden
+    environment:
+      - EXCLUDE=1200
+      - PUBLIC_DELAY_S=${PUBLIC_DELAY_S:-0}   # hold targets back before they reach the map (public launch)
+      - AIRCRAFT_POLL_S=2                     # how often the known-traffic list is re-read from the hub
+      # defaults, shown for reference:
+      # - READSB_HOST=hub
+      # - READSB_SBS_MLAT_PORT=32007
+      # - AIRCRAFT_JSON=http://hub/data/aircraft.json
+
+  # --- feeder check: is each feeder hearing the area it should? -----------------------------------
+  feedercheck:
+    image: ghcr.io/modeac-net/mlat-server-modeac
+    container_name: feedercheck
+    restart: unless-stopped
+    depends_on:
+      - hub
+    entrypoint: ["python3", "-m", "mlat.feedercheck"]
+    command: []
+    volumes:
+      - ./data/mlat:/run/mlat:ro                 # mlat-server's clients.json (stated locations)
+      - ./data/feedercheck:/run/feedercheck      # status.json (every feeder, verdict) and autoban.txt
+    environment:
+      - MODEAC_RECEIVER_AREA=${RECEIVER_AREA:-us}
+      - ACTION=${FEEDERCHECK_ACTION:-ban}        # ban: auto-ban feeders hearing only outside the area; report: log only
+
+  # --- admin page: feeder map + diagnostics, for you only -----------------------------------------
+  # Open http://<server>:8090 from your own computer (at home, or over Tailscale).
+  # Shows feeders' exact locations and IPs: never point Cloudflare or the relay at it.
+  admin:
+    image: nginx:alpine
+    container_name: admin
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    volumes:
+      - ./admin:/usr/share/nginx/html:ro
+      - ./config/nginx-admin.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./data/mlat:/srv/mlat:ro
+      - ./data/feedercheck:/srv/feedercheck:ro
+      - ./data/acfilter:/srv/acfilter:ro
+    depends_on:
+      - hub
+
+  # --- public website via Cloudflare tunnel ------------------------------------------------------
+  # Off by default. To enable: put TUNNEL_TOKEN in .env, then
+  #   docker compose --profile public up -d
+  # In the Cloudflare dashboard, point the tunnel's public hostname (modeac.net) at http://web:80
+  # (not the hub directly: web hides the feeder lists and admin pages).
+  web:
+    image: nginx:alpine
+    container_name: web
+    restart: unless-stopped
+    profiles: ["public"]
+    volumes:
+      - ./config/nginx-public.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - hub
+
+  cloudflared:
+    image: cloudflare/cloudflared
+    container_name: cloudflared
+    restart: unless-stopped
+    profiles: ["public"]
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN:-}
+    depends_on:
+      - web
+
+  # --- relay link to the VPS (feed.modeac.net), for volunteers outside your own network ----------
+  # Off until the VPS exists. Set RELAY_HOST and RELAY_PUBKEY in .env (vps-setup.sh prints the key), then
+  #   docker compose --profile relay up -d
+  # A WireGuard tunnel dialed OUT from here: nothing is opened on your router and your IP is never
+  # published. Only the three feed ports are passed through, and only to hub and mlat-server.
+  # It also pushes banned IPs (banlist.txt + the feeder check's autoban.txt) to the VPS firewall.
+  relay-link:
+    image: alpine:3.20
+    container_name: relay-link
+    restart: unless-stopped
+    profiles: ["relay"]
+    command: ["sh", "/relay/relay.sh"]
+    cap_add:
+      - NET_ADMIN                                # its own network only (tunnel + forwarding rules)
+    devices:
+      - /dev/net/tun                             # only used if the kernel has no WireGuard built in
+    sysctls:
+      - net.ipv4.ip_forward=1                    # inside this container only
+    volumes:
+      - ./relay/relay.sh:/relay/relay.sh:ro
+      - ./config/banlist.txt:/banlists/banlist.txt:ro
+      - ./data/feedercheck:/banlists/feedercheck:ro
+      - ./data/relay:/state                      # its keys (made on first start) and what was last sent
+    environment:
+      - RELAY_HOST=${RELAY_HOST:-}
+      - RELAY_PUBKEY=${RELAY_PUBKEY:-}
+    depends_on:
+      - hub
+      - mlat-server
