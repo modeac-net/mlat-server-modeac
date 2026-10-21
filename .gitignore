@@ -5,3 +5,16 @@ __pycache__
 *.csv
 *.json
 *.swp
+
+# build artifacts
+build/
+*.so
+mlat/clocktrack.c
+mlat/geodesy.c
+modes_cython/message.c
+
+# deploy runtime files
+deploy/.env
+deploy/data/
+!deploy/config/client-filter.json
+!mlat/data/*.json

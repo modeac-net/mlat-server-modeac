@@ -1,0 +1,7 @@
+.git
+build
+*.so
+mlat/*.c
+modes_cython/*.c
+workdir
+__pycache__
