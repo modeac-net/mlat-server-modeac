@@ -138,7 +138,8 @@ This is a fork of **[wiedehopf/mlat-server](https://github.com/wiedehopf/mlat-se
 TanerH), which continues **[mutability/mlat-server](https://github.com/mutability/mlat-server)** by Oliver
 Jowett. Clock synchronisation and Mode S multilateration, the heart of this server, are their work. The
 original README, including its important licence notes, is kept in [README-upstream.md](README-upstream.md).
-Please report problems with this fork here, not upstream.
+Please report problems with this fork here (receiver setup questions go to the
+[client's issues](https://github.com/modeac-net/mlat-client-modeac/issues)), not upstream. Private matters: contact@modeac.net.
 
 Licensed under the **GNU Affero General Public License v3** ([COPYING](COPYING)), like upstream. If others
 connect to a server you run, you must offer them your modified source: this repository is modeac.net's,
