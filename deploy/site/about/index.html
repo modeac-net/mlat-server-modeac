@@ -9,21 +9,27 @@
 <link rel="stylesheet" href="/site.css">
 </head>
 <body>
-<div class="wrap">
-  <header class="top">
-    <a class="wordmark" href="/">modeac.net</a>
-    <nav class="nav" aria-label="Main">
-      <a href="https://map.modeac.net">Live map</a>
-      <a href="/feed/">Add your receiver</a>
-      <a href="/about/" aria-current="page">About</a>
-    </nav>
-  </header>
-
-  <main>
-    <h1>About modeac.net</h1>
-    <p class="lede">modeac.net started with a simple frustration: the jets I most wanted to follow never show up
+<div class="band">
+  <div class="wrap">
+    <header class="top">
+      <a class="wordmark" href="/">modeac.net</a>
+      <nav class="nav" aria-label="Main">
+        <a href="https://map.modeac.net">Map</a>
+        <a href="/feed/">Feed</a>
+        <a href="/about/" aria-current="page">About</a>
+        <a href="https://github.com/modeac-net">GitHub</a>
+      </nav>
+    </header>
+    <div class="page-title">
+      <h1>About modeac.net</h1>
+      <p>modeac.net started with a simple frustration: the jets I most wanted to follow never show up
       on flight trackers. They don't broadcast ADS&#8209;B, but their transponders still answer radar, and ordinary
       receivers can hear those replies. modeac.net puts that together.</p>
+    </div>
+  </div>
+</div>
+<div class="wrap">
+  <main>
 
     <h2>How it finds aircraft without ADS&#8209;B</h2>
     <p>Most trackers rely on aircraft broadcasting their own GPS position (ADS&#8209;B). For aircraft that only have a

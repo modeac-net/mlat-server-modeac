@@ -141,6 +141,7 @@ services:
       - ./data/feedercheck:/srv/stats:ro         # public.json: network totals only (served as /stats.json)
     depends_on:
       - hub
+      - feedercheck                              # answers "is my feed working?" for the home page
 
   cloudflared:
     image: cloudflare/cloudflared

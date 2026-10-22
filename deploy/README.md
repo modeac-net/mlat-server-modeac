@@ -130,7 +130,9 @@ the internet, DNS and each other, and receivers still connect in. It runs at eve
 
 In the Cloudflare tunnel, route **both** public hostnames, `modeac.net` and `map.modeac.net`, to `http://web:80`;
 `web` serves the home page (`site/`) on the first and the map on the second. The home page's live
-numbers come from `data/feedercheck/public.json` (totals only), refreshed every few minutes.
+numbers come from `data/feedercheck/public.json` (totals only), refreshed every few minutes, and its
+"Your feed" box asks the feeder check (port 8099, reachable only from `web`) which feeds are connected
+from the visitor's own address, using the address Cloudflare reports.
 
 With `TUNNEL_TOKEN` in `.env`, `docker compose --profile public up -d` (or `COMPOSE_PROFILES=public,relay` in `.env`) adds `web` (in front of the hub) and the Cloudflare tunnel.
 In the Cloudflare dashboard, point the tunnel's hostname at `http://web:80`, and add one **Cache Rule**:

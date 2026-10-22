@@ -30,17 +30,23 @@ Outputs, in OUT_DIR:
   status.json   every feeder and its verdict
   public.json   network totals only (feeders, synced MLAT feeders, aircraft, Mode A/C targets) for the
                 public home page; nothing about any individual feeder
+
+It also answers "is my feed working?" for the home page (MYFEED_PORT, reached only through the public
+web front): given the visitor's IP address (which the web front takes from Cloudflare), it returns the
+feeds and MLAT clients connected from that same address, and nothing else.
 Auto-bans expire AUTOBAN_DAYS after the feeder was last seen outside the area.
 
 Cost: one pass over a few hundred feeders every few minutes - a few milliseconds.
 """
 
 import datetime
+import http.server
 import json
 import logging
 import math
 import os
 import re
+import threading
 import time
 import urllib.request
 
@@ -58,6 +64,7 @@ MISMATCH_KM = float(os.environ.get('MISMATCH_KM', '150'))
 AUTOBAN_DAYS = float(os.environ.get('AUTOBAN_DAYS', '7'))
 ACTION = os.environ.get('ACTION', 'ban').lower()          # ban | report
 ACFILTER_STATUS = os.environ.get('ACFILTER_STATUS', '/run/acfilter/status.json')
+MYFEED_PORT = int(os.environ.get('MYFEED_PORT', '8099'))     # 0 = off
 
 
 def area_path(area):
@@ -243,9 +250,90 @@ def public_summary(now, clients_doc, mlat_doc, aircraft_doc, acfilter_doc):
     return out
 
 
+# --- "is my feed working?" ------------------------------------------------------------------------
+
+def _norm_ip(ip):
+    ip = (ip or '').strip()
+    return ip[7:] if ip.startswith('::ffff:') else ip
+
+
+def myfeed(ip, clients_doc, mlat_doc, now=None):
+    """The visitor's own feeds and MLAT clients: only rows whose IP equals `ip`."""
+    now = time.time() if now is None else now
+    ip = _norm_ip(ip)
+    out = {'ip': ip, 'now': round(now), 'feeds': [], 'mlat': []}
+    if not ip:
+        return out
+    for row in (clients_doc or {}).get('clients', []):
+        try:
+            uuid, conn, kbit, conn_s, mps, pps = row[:6]
+        except (TypeError, ValueError):
+            continue
+        if ip_of(conn) != ip:
+            continue
+        out['feeds'].append({'id': str(uuid or '').strip()[:8], 'kbit': round(float(kbit or 0), 1),
+                             'connected_s': round(float(conn_s or 0)), 'msgs': round(float(mps or 0), 1),
+                             'positions': round(float(pps or 0), 1)})
+    for name, c in (mlat_doc or {}).items():
+        if _norm_ip(c.get('source_ip')) != ip:
+            continue
+        out['mlat'].append({'name': c.get('user') or name, 'peers': c.get('peer_count') or 0,
+                            'bad_sync': (c.get('bad_sync_timeout') or 0) > 0,
+                            'msgs': c.get('message_rate')})
+    return out
+
+
+class _MyFeed:
+    """Small cache so a busy home page doesn't re-read the hub on every request."""
+
+    def __init__(self):
+        self.t = 0.0
+        self.clients = None
+        self.mlat = None
+        self.lock = threading.Lock()
+
+    def lookup(self, ip):
+        with self.lock:
+            if time.time() - self.t > 10:
+                try:
+                    self.clients = _fetch(HUB_URL + '/data/clients.json')
+                except Exception:                    # noqa: BLE001
+                    self.clients = None
+                self.mlat = _try_load(MLAT_CLIENTS)
+                self.t = time.time()
+            return myfeed(ip, self.clients, self.mlat)
+
+
+def serve_myfeed(port):
+    cache = _MyFeed()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path.split('?')[0] != '/myfeed':
+                self.send_error(404)
+                return
+            ip = self.headers.get('X-Real-IP', '')
+            body = json.dumps(cache.lookup(ip)).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(('0.0.0.0', port), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    log.info('answering "is my feed working?" on port %d', port)
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(message)s')
     os.makedirs(OUT_DIR, exist_ok=True)
+    if MYFEED_PORT:
+        serve_myfeed(MYFEED_PORT)
     outline = geofence.Outline(area_path(AREA))
     try:
         with open(os.path.join(OUT_DIR, 'autoban.json')) as f:

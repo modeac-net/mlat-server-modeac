@@ -9,21 +9,27 @@
 <link rel="stylesheet" href="/site.css">
 </head>
 <body>
-<div class="wrap">
-  <header class="top">
-    <a class="wordmark" href="/">modeac.net</a>
-    <nav class="nav" aria-label="Main">
-      <a href="https://map.modeac.net">Live map</a>
-      <a href="/feed/" aria-current="page">Add your receiver</a>
-      <a href="/about/">About</a>
-    </nav>
-  </header>
-
-  <main>
-    <h1>Add your receiver</h1>
-    <p class="lede">If your receiver runs ultrafeeder in Docker, joining is three small edits to the
+<div class="band">
+  <div class="wrap">
+    <header class="top">
+      <a class="wordmark" href="/">modeac.net</a>
+      <nav class="nav" aria-label="Main">
+        <a href="https://map.modeac.net">Map</a>
+        <a href="/feed/" aria-current="page">Feed</a>
+        <a href="/about/">About</a>
+        <a href="https://github.com/modeac-net">GitHub</a>
+      </nav>
+    </header>
+    <div class="page-title">
+      <h1>Add your receiver</h1>
+      <p>If your receiver runs ultrafeeder in Docker, joining is three small edits to the
       <code>docker-compose.yml</code> you already have. It takes about five minutes, and your other
       feeds keep running exactly as before.</p>
+    </div>
+  </div>
+</div>
+<div class="wrap">
+  <main>
     <p class="note"><strong>United States only.</strong> The server accepts receivers in the 50 states.
       Receivers elsewhere are turned away, and the log says why.</p>
 
