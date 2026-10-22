@@ -101,7 +101,8 @@ services:
     command: []
     volumes:
       - ./data/mlat:/run/mlat:ro                 # mlat-server's clients.json (stated locations)
-      - ./data/feedercheck:/run/feedercheck      # status.json (every feeder, verdict) and autoban.txt
+      - ./data/feedercheck:/run/feedercheck      # status.json (every feeder, verdict), autoban.txt, public.json (totals)
+      - ./data/acfilter:/run/acfilter:ro         # Mode A/C target count for the home page
     environment:
       - MODEAC_RECEIVER_AREA=${RECEIVER_AREA:-us}
       - ACTION=${FEEDERCHECK_ACTION:-ban}        # ban: auto-ban feeders hearing only outside the area; report: log only
@@ -127,8 +128,8 @@ services:
   # --- public website via Cloudflare tunnel ------------------------------------------------------
   # Off by default. To enable: put TUNNEL_TOKEN in .env, then
   #   docker compose --profile public up -d
-  # In the Cloudflare dashboard, point the tunnel's public hostname (modeac.net) at http://web:80
-  # (not the hub directly: web hides the feeder lists and admin pages).
+  # In the Cloudflare dashboard, route both public hostnames, modeac.net (home page) and map.modeac.net
+  # (live map), to http://web:80 (not the hub directly: web hides the feeder lists and admin pages).
   web:
     image: nginx:alpine
     container_name: web
@@ -136,6 +137,8 @@ services:
     profiles: ["public"]
     volumes:
       - ./config/nginx-public.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./site:/srv/site:ro                      # the home page (modeac.net)
+      - ./data/feedercheck:/srv/stats:ro         # public.json: network totals only (served as /stats.json)
     depends_on:
       - hub
 

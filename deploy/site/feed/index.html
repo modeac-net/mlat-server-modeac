@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Add your receiver · modeac.net</title>
+<meta name="description" content="How to add your ADS-B receiver to modeac.net: three small changes to an ultrafeeder setup, about five minutes.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="wordmark" href="/">modeac.net</a>
+    <nav class="nav" aria-label="Main">
+      <a href="https://map.modeac.net">Live map</a>
+      <a href="/feed/" aria-current="page">Add your receiver</a>
+      <a href="/about/">About</a>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Add your receiver</h1>
+    <p class="lede">If your receiver runs ultrafeeder in Docker, joining is three small edits to the
+      <code>docker-compose.yml</code> you already have. It takes about five minutes, and your other
+      feeds keep running exactly as before.</p>
+    <p class="note"><strong>Ohio only for now.</strong> During the test the server only accepts receivers in
+      Ohio. Receivers elsewhere are turned away, and the log says why. The rest of the US is next.</p>
+
+    <h2>What you need</h2>
+    <p>A receiver in Ohio with its antenna position and height above sea level in your <code>.env</code>
+      file (the usual <code>FEEDER_LAT</code>, <code>FEEDER_LONG</code> and <code>FEEDER_ALT_M</code>). Use
+      the antenna's position, not your street address: every metre of error becomes timing error.</p>
+    <p>An SDR that's already good enough for MLAT. If your receiver does MLAT for adsb.lol, ADS&#8209;B Exchange or
+      adsb.fi, it's fine. Any recent ADS&#8209;B dongle works: RTL-SDR Blog V3 or V4, FlightAware Pro Stick (Plus),
+      Airspy and similar.</p>
+
+    <h2>1. Turn on Mode A/C</h2>
+    <p>In <code>docker-compose.yml</code>, find the <code>ultrafeeder:</code> service and add this line to
+      its <code>environment:</code> list:</p>
+    <div class="code"><pre><code>      - READSB_MODEAC=true</code></pre></div>
+    <p>That tells readsb to decode Mode A/C replies as well. It costs a little more CPU; even a Pi&nbsp;3 copes.</p>
+
+    <h2>2. Send your map feed</h2>
+    <p>Still in the <code>ultrafeeder:</code> service, add this to the end of your
+      <code>ULTRAFEEDER_CONFIG</code> line, right after the last entry:</p>
+    <div class="code"><pre><code>;adsb,feed.modeac.net,30004,beast_reduce_plus_out</code></pre></div>
+    <p>Keep a <code>;</code> between every entry. If your line says <code>ULTRAFEEDER_CONFIG=${ULTRAFEEDER_CONFIG}</code>,
+      the list is in your <code>.env</code> file instead: add it there.</p>
+
+    <h2>3. Add the modeac.net client</h2>
+    <p>Paste this under <code>services:</code>, next to <code>ultrafeeder:</code> and indented the same way.
+      It reads your name, location and feeder ID from your <code>.env</code>, so it normally needs no editing:</p>
+    <div class="code"><pre><code>  mlat-modeac:
+    image: ghcr.io/modeac-net/mlat-client-modeac
+    container_name: mlat-modeac
+    restart: unless-stopped
+    environment:
+      - MLAT_SERVER=feed.modeac.net:31090
+      - MLAT_USER=${FEEDER_NAME}
+      - LAT=${FEEDER_LAT}
+      - LON=${FEEDER_LONG}
+      - ALT=${FEEDER_ALT_M}m
+      - UUID=${ULTRAFEEDER_UUID:-}</code></pre></div>
+    <p>Then start everything:</p>
+    <div class="code"><pre><code>docker compose up -d</code></pre></div>
+
+    <h2>Check it's working</h2>
+    <div class="code"><pre><code>docker logs -f mlat-modeac</code></pre></div>
+    <p>Within a minute you should see <code>Handshake complete</code>. Every five minutes there's a
+      <code>Mode A/C:</code> line with how many replies were received and sent. Press Ctrl+C to stop
+      watching; the client keeps running. Your aircraft appear on the
+      <a href="https://map.modeac.net">live map</a> within a minute or two.</p>
+    <table class="trouble">
+      <tr><th>The log says</th><th>What to do</th></tr>
+      <tr><td><code>Mode A/C: 0.0 msg/s received</code>, and it stays at 0</td><td>readsb isn't decoding Mode A/C yet: check step 1, then run <code>docker compose up -d</code> again.</td></tr>
+      <tr><td><code>outside the area this server covers</code></td><td>The location in your <code>.env</code> isn't in Ohio. Usually a missing minus sign on the longitude (Ohio's is about −80 to −85). Fix it, then <code>docker compose up -d --force-recreate mlat-modeac</code>.</td></tr>
+      <tr><td><code>LAT and LON must be set</code></td><td>Your <code>.env</code> doesn't have the location variables. Put your values straight into the block instead, like <code>- LAT=40.0123</code>.</td></tr>
+      <tr><td><code>Connection to feed.modeac.net:31090 failed</code></td><td>Usually temporary. The client retries by itself.</td></tr>
+    </table>
+
+    <h2>Using adsb.im, PiAware or something else?</h2>
+    <p>adsb.im can join, but not with one click yet: it needs a setting on its Expert page and one command over
+      SSH. <a href="mailto:contact@modeac.net">Email me</a> and I'll walk you through it. For a plain readsb
+      setup, the <a href="https://github.com/modeac-net/mlat-client-modeac#not-using-ultrafeeder">client's
+      README</a> has a single <code>docker run</code> command. PiAware hasn't been tried yet.</p>
+    <p>Don't have a receiver yet? A Raspberry Pi, a 1090&nbsp;MHz dongle and antenna, roughly $120–150 in all,
+      also lets you feed every other tracker. <a href="mailto:contact@modeac.net">Get in touch</a> and I'll
+      help you pick parts.</p>
+
+    <h2>Stuck?</h2>
+    <p><a href="https://github.com/modeac-net/mlat-client-modeac/issues/new?template=setup-help.yml">Open a setup-help
+      issue</a> with the last 30 lines of <code>docker logs mlat-modeac</code>. Issues are public, so
+      remove your latitude and longitude from the log first. For anything private, email
+      <a href="mailto:contact@modeac.net">contact@modeac.net</a>.</p>
+
+    <h2 id="leaving">Leaving</h2>
+    <p>Remove the <code>mlat-modeac:</code> block, the <code>READSB_MODEAC=true</code> line and the
+      <code>feed.modeac.net</code> entry, then run <code>docker compose up -d --remove-orphans</code>.
+      Nothing else on your system was changed.</p>
+  </main>
+
+  <footer class="foot">
+    <p>What gets sent and what's shown: <a href="/about/#privacy">privacy</a>.
+      Questions or problems: <a href="mailto:contact@modeac.net">contact@modeac.net</a>.</p>
+  </footer>
+</div>
+<script>
+  // copy buttons for the code boxes
+  document.querySelectorAll(".code").forEach(function (box) {
+    if (!navigator.clipboard) return;
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "Copy";
+    btn.addEventListener("click", function () {
+      navigator.clipboard.writeText(box.querySelector("code").textContent).then(function () {
+        btn.textContent = "Copied";
+        setTimeout(function () { btn.textContent = "Copy"; }, 1500);
+      });
+    });
+    box.appendChild(btn);
+  });
+</script>
+</body>
+</html>

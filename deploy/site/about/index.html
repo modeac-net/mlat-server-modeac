@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About · modeac.net</title>
+<meta name="description" content="What modeac.net is, how it locates aircraft without ADS-B, what data it uses, and who built what.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="wordmark" href="/">modeac.net</a>
+    <nav class="nav" aria-label="Main">
+      <a href="https://map.modeac.net">Live map</a>
+      <a href="/feed/">Add your receiver</a>
+      <a href="/about/" aria-current="page">About</a>
+    </nav>
+  </header>
+
+  <main>
+    <h1>About modeac.net</h1>
+    <p class="lede">modeac.net started with a simple frustration: the jets I most wanted to follow never show up
+      on flight trackers. They don't broadcast ADS&#8209;B, but their transponders still answer radar, and ordinary
+      receivers can hear those replies. modeac.net puts that together.</p>
+
+    <h2>How it finds aircraft without ADS&#8209;B</h2>
+    <p>Most trackers rely on aircraft broadcasting their own GPS position (ADS&#8209;B). For aircraft that only have a
+      Mode S transponder, networks like ADS&#8209;B Exchange use multilateration: several receivers time the same
+      reply, and the differences in arrival time give the position. That works because every Mode S reply
+      carries the aircraft's address, so the server knows which replies belong together.</p>
+    <p>Many military aircraft answer in the older Modes 3/A and C instead: just a squawk code and an altitude,
+      with no address. Trackers drop those. modeac.net's server groups them by code and timing instead, works
+      out a position whenever four or more receivers heard the same reply, and then pairs each target's squawk
+      with its altitude reply to follow it.</p>
+    <p>It doesn't decode anything secret. Military IFF Modes 4 and 5 are encrypted and aren't used. Everything
+      here comes from replies aircraft send to civilian air traffic control radar.</p>
+
+    <h2>Where it's at</h2>
+    <p>This is a test, limited to Ohio. Ordinary ADS&#8209;B and MLAT traffic is on the map now. Locating Mode A/C-only
+      aircraft needs four receivers hearing the same aircraft, so it gets better with every receiver that joins.
+      Expect rough edges, and please <a href="mailto:contact@modeac.net">tell me</a> what you see.</p>
+
+    <h2 id="privacy">Privacy</h2>
+    <h3>What feeders send</h3>
+    <p>Your receiver's name and position (from your settings), a feeder ID, timestamped Mode S and Mode A/C
+      replies, and the same reduced ADS&#8209;B feed other aggregators get. The server also sees your internet address,
+      like any website does.</p>
+    <h3>What's shown</h3>
+    <p>The map shows aircraft only. Receiver names, positions and addresses are never published. The home page
+      shows network totals: how many receivers, aircraft and targets, nothing about any one receiver.</p>
+    <h3>What's checked</h3>
+    <p>MLAT only works if every receiver's position is right, so the server compares where a receiver says it is
+      with what it actually hears. Receivers that don't match, or that are outside the test area, are turned away
+      automatically.</p>
+    <h3>Visitors</h3>
+    <p>This site doesn't use cookies, analytics or ads, and its fonts are served from here, not a third party.
+      Pages pass through Cloudflare, which keeps the server's address private and handles the load.</p>
+    <p>To stop feeding, remove the client (see <a href="/feed/#leaving">Leaving</a>). To have anything about your
+      receiver removed, email <a href="mailto:contact@modeac.net">contact@modeac.net</a>.</p>
+
+    <h2>Credits</h2>
+    <p>modeac.net stands on other people's work: wiedehopf's
+      <a href="https://github.com/wiedehopf/mlat-server">mlat-server</a> and
+      <a href="https://github.com/wiedehopf/mlat-client">mlat-client</a>, which continue Oliver Jowett's
+      original MLAT code, plus <a href="https://github.com/wiedehopf/readsb">readsb</a>,
+      <a href="https://github.com/wiedehopf/tar1090">tar1090</a> and the SDR-Enthusiasts
+      <a href="https://github.com/sdr-enthusiasts/docker-adsb-ultrafeeder">ultrafeeder</a>. The Mode A/C
+      additions are open source too: the <a href="https://github.com/modeac-net/mlat-client-modeac">client</a>
+      and the <a href="https://github.com/modeac-net/mlat-server-modeac">server</a>.</p>
+
+    <h2>The small print</h2>
+    <p>modeac.net is a free, non-commercial hobby project, provided as-is, for personal interest. It isn't for
+      navigation or anything safety-related. Please don't scrape or resell the data.</p>
+  </main>
+
+  <footer class="foot">
+    <p>Questions or problems: <a href="mailto:contact@modeac.net">contact@modeac.net</a>.</p>
+  </footer>
+</div>
+</body>
+</html>

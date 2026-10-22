@@ -28,6 +28,8 @@ Inputs (all already produced by the stack, nothing extra to run):
 Outputs, in OUT_DIR:
   autoban.txt   IPs and UUIDs, read by mlat-server's --banlist (and later by the relay firewall)
   status.json   every feeder and its verdict
+  public.json   network totals only (feeders, synced MLAT feeders, aircraft, Mode A/C targets) for the
+                public home page; nothing about any individual feeder
 Auto-bans expire AUTOBAN_DAYS after the feeder was last seen outside the area.
 
 Cost: one pass over a few hundred feeders every few minutes - a few milliseconds.
@@ -55,6 +57,7 @@ MIN_POSITIONS = int(os.environ.get('MIN_POSITIONS', '300'))
 MISMATCH_KM = float(os.environ.get('MISMATCH_KM', '150'))
 AUTOBAN_DAYS = float(os.environ.get('AUTOBAN_DAYS', '7'))
 ACTION = os.environ.get('ACTION', 'ban').lower()          # ban | report
+ACFILTER_STATUS = os.environ.get('ACFILTER_STATUS', '/run/acfilter/status.json')
 
 
 def area_path(area):
@@ -203,7 +206,41 @@ def run_once(outline, state):
     _write_atomic(os.path.join(OUT_DIR, 'status.json'),
                   json.dumps({'now': round(now), 'area': AREA, 'action': ACTION, 'counts': counts,
                               'feeders': feeders}, indent=1))
+    _write_atomic(os.path.join(OUT_DIR, 'public.json'),
+                  json.dumps(public_summary(now, clients, mlat, _try_fetch(HUB_URL + '/data/aircraft.json'),
+                                            _try_load(ACFILTER_STATUS))))
     return counts
+
+
+def _try_fetch(url):
+    try:
+        return _fetch(url)
+    except Exception:                                # noqa: BLE001 - totals are best effort
+        return None
+
+
+def _try_load(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def public_summary(now, clients_doc, mlat_doc, aircraft_doc, acfilter_doc):
+    """Totals for the public home page. Counts only: no names, places, IDs or addresses."""
+    out = {'now': round(now), 'area': AREA,
+           'feeders': len((clients_doc or {}).get('clients', [])),
+           'mlat_feeders': len(mlat_doc or {}),
+           'mlat_synced': sum(1 for c in (mlat_doc or {}).values() if (c.get('peer_count') or 0) > 0)}
+    if aircraft_doc is not None:
+        out['aircraft'] = sum(1 for a in aircraft_doc.get('aircraft', [])
+                              if a.get('lat') is not None and (a.get('seen_pos') or 0) < 60)
+    if acfilter_doc is not None:
+        t = acfilter_doc.get('now', now)
+        out['modeac_targets'] = sum(1 for a in acfilter_doc.get('aircraft', [])
+                                    if a.get('lat') is not None and t - (a.get('t') or 0) < 60)
+    return out
 
 
 def main():

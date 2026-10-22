@@ -8,7 +8,7 @@ One `docker-compose.yml` runs the whole back end:
 | `mlat-server` | `ghcr.io/modeac-net/mlat-server-modeac` | clock sync, ordinary Mode S multilateration (tankers and other Mode S-only aircraft, sent to the hub) and Mode A/C multilateration (sent to acfilter); clients connect on 31090/tcp + 31091/udp |
 | `acfilter` | `ghcr.io/modeac-net/modeac-filter` | tracks fixes, pairs squawk with altitude by position, hides traffic already known from ADS-B/Mode S, drops 1200 |
 | `feedercheck` | `ghcr.io/modeac-net/mlat-server-modeac` | every 5 min: checks each feeder's reception area (from readsb) against the accepted area and its stated location; auto-bans feeders that only hear outside it |
-| `web`, `cloudflared` | nginx, Cloudflare tunnel | public site (`--profile public`); `web` keeps the feeder lists and admin pages private |
+| `web`, `cloudflared` | nginx, Cloudflare tunnel | public site (`--profile public`): the home page and feeding guide at modeac.net (`site/`), the live map at map.modeac.net; `web` keeps the feeder lists and admin pages private |
 | `admin` | nginx | private admin page on port 8090: feeder map (sync lines, coverage) and a diagnostics table in plain English |
 | `relay-link` | alpine + WireGuard | tunnel to the VPS relay and ban pushes (`--profile relay`) |
 
@@ -128,13 +128,17 @@ the internet, DNS and each other, and receivers still connect in. It runs at eve
 
 ## Public site
 
+In the Cloudflare tunnel, route **both** public hostnames, `modeac.net` and `map.modeac.net`, to `http://web:80`;
+`web` serves the home page (`site/`) on the first and the map on the second. The home page's live
+numbers come from `data/feedercheck/public.json` (totals only), refreshed every few minutes.
+
 With `TUNNEL_TOKEN` in `.env`, `docker compose --profile public up -d` (or `COMPOSE_PROFILES=public,relay` in `.env`) adds `web` (in front of the hub) and the Cloudflare tunnel.
 In the Cloudflare dashboard, point the tunnel's hostname at `http://web:80`, and add one **Cache Rule**:
 *when URI path starts with `/data/`* → *Eligible for cache*, *Edge TTL: use cache-control header if
 present*. Cloudflare doesn't cache JSON unless told to; with the rule, `web`'s 1-second
 `Cache-Control` lets each Cloudflare location serve all its visitors from one copy a second, so
 your home upload no longer grows with the number of people watching. Check it from outside with
-`curl -sI https://modeac.net/data/aircraft.json`: `cf-cache-status: HIT` on repeats means it works.
+`curl -sI https://map.modeac.net/data/aircraft.json`: `cf-cache-status: HIT` on repeats means it works.
 
 ## Update
 

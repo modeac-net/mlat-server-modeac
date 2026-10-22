@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>modeac.net</title>
+<meta name="description" content="A volunteer receiver network that locates aircraft flight trackers miss, like military jets without ADS-B, by timing their transponder replies.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="/fonts/barlow-semi-condensed-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="wordmark" href="/">modeac.net</a>
+    <nav class="nav" aria-label="Main">
+      <a href="https://map.modeac.net">Live map</a>
+      <a href="/feed/">Add your receiver</a>
+      <a href="/about/">About</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="moa" aria-labelledby="hero">
+      <span class="moa-name">Ohio test area</span>
+      <h1 id="hero">Fighter jets don't show up on flight trackers. Your receiver can change that.</h1>
+      <p class="lede">modeac.net is a volunteer network that locates aircraft without ADS&#8209;B, like the
+        180th's F-16s, by timing their transponder replies at several receivers at once. It's in a small
+        Ohio-only test right now.</p>
+      <div class="actions">
+        <a class="button primary" href="https://map.modeac.net">Open the live map</a>
+        <a class="button secondary" href="/feed/">Add your receiver</a>
+      </div>
+      <p class="live" id="live" aria-live="polite">Loading live numbers…</p>
+    </section>
+
+    <h2>How it works</h2>
+    <ol class="steps">
+      <li>
+        <h3>Radar asks</h3>
+        <p>Air traffic control radar interrogates every transponder in range on 1030&nbsp;MHz, military jets included.</p>
+      </li>
+      <li>
+        <h3>The jet answers</h3>
+        <p>It replies on 1090&nbsp;MHz with its squawk code and altitude (Modes 3/A and C). There's no
+          position in the reply and nothing is encrypted. Ordinary ADS&#8209;B receivers hear these replies
+          and usually throw them away.</p>
+      </li>
+      <li>
+        <h3>Receivers time it</h3>
+        <p>When four or more receivers hear the same reply, the tiny differences in when each one heard it
+          pin down where it came from. That's the same multilateration (MLAT) ADS&#8209;B Exchange and others use
+          for Mode S aircraft. The jet then appears on the map.</p>
+      </li>
+    </ol>
+
+    <h2>Run a receiver?</h2>
+    <p>If you already feed ADS&#8209;B Exchange, adsb.lol or similar with ultrafeeder, joining takes about five
+      minutes and doesn't change your other feeds. Every receiver adds coverage, and it takes four hearing
+      the same jet to place it.</p>
+    <div class="actions">
+      <a class="button primary" href="/feed/">See how to add your receiver</a>
+    </div>
+
+    <h2>Questions people ask</h2>
+    <dl class="qa">
+      <dt>Isn't military IFF encrypted?</dt>
+      <dd>Modes 4 and 5 are, and modeac.net doesn't touch them. It only uses the plain replies jets send to
+        civilian air traffic control radar, so it shows roughly what a controller's scope already shows.</dd>
+      <dt>Why not just use ADS&#8209;B Exchange?</dt>
+      <dd>Keep feeding it! Its MLAT works on Mode S aircraft, which identify themselves in every reply.
+        Aircraft answering only in Mode 3/A and C don't, so no tracker can place them. That's the gap
+        modeac.net fills.</dd>
+      <dt>Will my location be public?</dt>
+      <dd>No. Your receiver's exact position is only used for the timing maths. Receiver names and locations
+        are never shown on the map or anywhere else on this site.</dd>
+    </dl>
+    <p><a href="/about/">More about the project</a></p>
+  </main>
+
+  <footer class="foot">
+    <p>modeac.net is a free, non-commercial hobby project, built on wiedehopf's
+      <a href="https://github.com/wiedehopf/mlat-server">mlat-server</a> and
+      <a href="https://github.com/wiedehopf/mlat-client">mlat-client</a>, readsb and tar1090.
+      Our code is open source: <a href="https://github.com/modeac-net/mlat-client-modeac">client</a>,
+      <a href="https://github.com/modeac-net/mlat-server-modeac">server</a>.</p>
+    <p>Questions or problems: <a href="mailto:contact@modeac.net">contact@modeac.net</a>.
+      <a href="/about/#privacy">Privacy</a>.</p>
+  </footer>
+</div>
+<script src="/site.js" defer></script>
+</body>
+</html>
