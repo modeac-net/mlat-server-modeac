@@ -8,8 +8,8 @@ It's a fork of [wiedehopf/mlat-server](https://github.com/wiedehopf/mlat-server)
 multilateration of **Mode A/C replies**. Ordinary Mode S MLAT is unchanged and keeps working.
 
 > **Want to feed?** You don't need anything from this repository: see the
-> [receiver client](https://github.com/modeac-net/mlat-client-modeac#join-with-ultrafeeder-about-5-minutes).
-> modeac.net is in a **private beta for Ohio** receivers.
+> [receiver client](https://github.com/modeac-net/mlat-client-modeac#join-with-ultrafeeder-about-5-minutes),
+> or the guide at [modeac.net/feed](https://modeac.net/feed/). Receivers anywhere in the US are welcome.
 
 ```
 volunteers' receivers (mlat-client-modeac)

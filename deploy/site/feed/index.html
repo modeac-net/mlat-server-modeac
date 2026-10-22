@@ -24,11 +24,11 @@
     <p class="lede">If your receiver runs ultrafeeder in Docker, joining is three small edits to the
       <code>docker-compose.yml</code> you already have. It takes about five minutes, and your other
       feeds keep running exactly as before.</p>
-    <p class="note"><strong>Ohio only for now.</strong> During the test the server only accepts receivers in
-      Ohio. Receivers elsewhere are turned away, and the log says why. The rest of the US is next.</p>
+    <p class="note"><strong>United States only.</strong> The server accepts receivers in the 50 states.
+      Receivers elsewhere are turned away, and the log says why.</p>
 
     <h2>What you need</h2>
-    <p>A receiver in Ohio with its antenna position and height above sea level in your <code>.env</code>
+    <p>A receiver in the US with its antenna position and height above sea level in your <code>.env</code>
       file (the usual <code>FEEDER_LAT</code>, <code>FEEDER_LONG</code> and <code>FEEDER_ALT_M</code>). Use
       the antenna's position, not your street address: every metre of error becomes timing error.</p>
     <p>An SDR that's already good enough for MLAT. If your receiver does MLAT for adsb.lol, ADS&#8209;B Exchange or
@@ -74,7 +74,7 @@
     <table class="trouble">
       <tr><th>The log says</th><th>What to do</th></tr>
       <tr><td><code>Mode A/C: 0.0 msg/s received</code>, and it stays at 0</td><td>readsb isn't decoding Mode A/C yet: check step 1, then run <code>docker compose up -d</code> again.</td></tr>
-      <tr><td><code>outside the area this server covers</code></td><td>The location in your <code>.env</code> isn't in Ohio. Usually a missing minus sign on the longitude (Ohio's is about −80 to −85). Fix it, then <code>docker compose up -d --force-recreate mlat-modeac</code>.</td></tr>
+      <tr><td><code>outside the area this server covers</code></td><td>The location in your <code>.env</code> isn't in the US. Usually a missing minus sign on the longitude (US longitudes are negative, e.g. −83.0). Fix it, then <code>docker compose up -d --force-recreate mlat-modeac</code>.</td></tr>
       <tr><td><code>LAT and LON must be set</code></td><td>Your <code>.env</code> doesn't have the location variables. Put your values straight into the block instead, like <code>- LAT=40.0123</code>.</td></tr>
       <tr><td><code>Connection to feed.modeac.net:31090 failed</code></td><td>Usually temporary. The client retries by itself.</td></tr>
     </table>
