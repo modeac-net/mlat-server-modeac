@@ -234,10 +234,22 @@ def _try_load(path):
         return None
 
 
+_PRIVATE = re.compile(r'^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)')
+
+
+def _internal(row):
+    """The server's own parts (mlat-server, ac-filter) connect to the hub too: no UUID, private address."""
+    try:
+        uuid, conn = row[0], row[1]
+    except (TypeError, IndexError):
+        return True
+    return not str(uuid or '').strip() and bool(_PRIVATE.match(ip_of(conn) or ''))
+
+
 def public_summary(now, clients_doc, mlat_doc, aircraft_doc, acfilter_doc):
     """Totals for the public home page. Counts only: no names, places, IDs or addresses."""
     out = {'now': round(now), 'area': AREA,
-           'feeders': len((clients_doc or {}).get('clients', [])),
+           'feeders': sum(1 for row in (clients_doc or {}).get('clients', []) if not _internal(row)),
            'mlat_feeders': len(mlat_doc or {}),
            'mlat_synced': sum(1 for c in (mlat_doc or {}).values() if (c.get('peer_count') or 0) > 0)}
     if aircraft_doc is not None:

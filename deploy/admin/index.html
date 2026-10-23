@@ -200,8 +200,10 @@ function buildRows(src) {
       feed, chk, box: chk && chk.box, connected_s: feed ? feed.connected_s : null,
     });
   }
+  // the server's own parts (mlat-server, ac-filter) also connect to the hub; they aren't feeders
+  const internal = (f) => !f.uuid && /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(f.ip || "");
   for (const f of feeds) {
-    if (f.used) continue;
+    if (f.used || internal(f)) continue;
     const chk = checkByUuid[f.uuid];
     rows.push({key: "f:" + (f.uuid || f.ip), kind: "feed", name: "(map feed " + (f.uuid ? f.uuid.slice(0, 8) : f.ip) + ")",
                uuid: f.uuid, ip: f.ip, feed: f, chk, box: chk && chk.box, connected_s: f.connected_s,
