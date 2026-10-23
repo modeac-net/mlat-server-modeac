@@ -238,12 +238,13 @@ _PRIVATE = re.compile(r'^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)')
 
 
 def _internal(row):
-    """The server's own parts (mlat-server, ac-filter) connect to the hub too: no UUID, private address."""
+    """The server's own parts (mlat-server, ac-filter) connect to the hub too, to deliver results: from a
+    private address, not through the relay (no PROXY header), and sending no Beast messages."""
     try:
-        uuid, conn = row[0], row[1]
-    except (TypeError, IndexError):
+        conn, mps = str(row[1] or '').strip(), float(row[4] or 0)
+    except (TypeError, IndexError, ValueError):
         return True
-    return not str(uuid or '').strip() and bool(_PRIVATE.match(ip_of(conn) or ''))
+    return not conn.startswith(('TCP4 ', 'TCP6 ')) and mps <= 0 and bool(_PRIVATE.match(ip_of(conn) or ''))
 
 
 def public_summary(now, clients_doc, mlat_doc, aircraft_doc, acfilter_doc):

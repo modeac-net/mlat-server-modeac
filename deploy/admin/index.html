@@ -172,6 +172,7 @@ function buildRows(src) {
   // ADS-B feed connections from readsb
   const feeds = hubRows.map((r) => ({
     uuid: String(r[0] || "").trim().toLowerCase(), ip: ipFromConn(r[1]), kbit: r[2],
+    relayed: /^TCP[46] /.test(String(r[1] || "").trim()),
     connected_s: r[3], mps: r[4], pps: r[5], positions: r[8], used: false,
   }));
   const checkByUuid = {};
@@ -200,8 +201,9 @@ function buildRows(src) {
       feed, chk, box: chk && chk.box, connected_s: feed ? feed.connected_s : null,
     });
   }
-  // the server's own parts (mlat-server, ac-filter) also connect to the hub; they aren't feeders
-  const internal = (f) => !f.uuid && /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(f.ip || "");
+  // the server's own parts (mlat-server, ac-filter) also connect to the hub to deliver results: from a
+  // private address, not through the relay, with no Beast messages. They aren't feeders.
+  const internal = (f) => !f.relayed && !(f.mps > 0) && /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(f.ip || "");
   for (const f of feeds) {
     if (f.used || internal(f)) continue;
     const chk = checkByUuid[f.uuid];
